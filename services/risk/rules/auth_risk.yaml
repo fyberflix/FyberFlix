@@ -1,0 +1,41 @@
+version: 1
+spec_id: auth_risk
+description: >
+  FyberFlix signup/login risk rules. Brute-force limiting is NOT here:
+  it lives in auth-service (Redis, shared across replicas).
+
+settings:
+  case_sensitive: false
+  default_action: allow
+  max_severity_wins: true
+
+severity_levels:
+  low:      { weight: 1, action: flag }      # log only
+  medium:   { weight: 2, action: step_up }   # ask for extra verification
+  high:     { weight: 3, action: step_up }
+  critical: { weight: 4, action: deny }
+
+rules:
+  - id: signup_bot_timing
+    type: variance_check
+    target: signup.action_intervals
+    max_variance_ms: 50
+    min_samples: 5
+    severity: medium
+    reason: "Uniform signup timing suggests a script/bot"
+
+  - id: name_phishing_words
+    type: pattern
+    target: signup.cable_name
+    pattern: "(login|log-in|verify|secure|wallet|otp|giveaway|refund|recover)"
+    severity: medium
+    reason: "Fyber Cable name resembles a phishing/scam handle"
+
+  - id: name_looks_like_url
+    type: pattern
+    target: signup.cable_name
+    pattern: "(www\\.|https?|\\.(com|net|org|xyz|in|co)$)"
+    severity: medium
+    reason: "Fyber Cable name looks like a web address"
+
+keyword_lists: {}
