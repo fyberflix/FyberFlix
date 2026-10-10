@@ -1,0 +1,32 @@
+name: fyberflix
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: fyber
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+      POSTGRES_DB: fyberflix_auth        # one database per microservice
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../db/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fyber -d fyberflix_auth"]
+      interval: 5s
+      retries: 10
+    ports: ["127.0.0.1:5432:5432"]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["127.0.0.1:6379:6379"]
+
+  auth:
+    build: ../services/auth
+    environment:
+      DATABASE_URL: postgres://fyber:${POSTGRES_PASSWORD}@postgres:5432/fyberflix_auth
+    depends_on:
+      postgres: { condition: service_healthy }
+    ports: ["127.0.0.1:8080:8080"]
+
+volumes:
+  pgdata:
