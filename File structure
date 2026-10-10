@@ -1,0 +1,88 @@
+fyberflix/
+├── README.md
+├── Makefile                          # make up | test | lint | proto | migrate
+├── .gitignore
+├── .github/workflows/                # CI: lint + test + build + image scan
+│   ├── go.yml
+│   ├── python.yml
+│   └── security.yml
+│
+├── contracts/                        # service-to-service API ka single source of truth
+│   ├── proto/
+│   │   ├── auth/v1/auth.proto
+│   │   ├── face/v1/face.proto
+│   │   ├── risk/v1/risk.proto
+│   │   └── notify/v1/notify.proto
+│   ├── events/                       # async event schemas (user.created, face.enrolled ...)
+│   └── buf.yaml                      # proto lint + codegen
+│
+├── services/
+│   ├── gateway/                      # [Go] public entry: TLS, routing, rate limit, authn check
+│   │   ├── cmd/gateway/main.go
+│   │   └── internal/{routes,ratelimit,middleware,config}/
+│   │
+│   ├── auth/                         # [Go] SIRF yahi ab tak bana hai (Step 1A)
+│   │   ├── cmd/auth/main.go
+│   │   ├── internal/
+│   │   │   ├── config/               # [done]
+│   │   │   ├── identity/             # [done] cable name + number rules
+│   │   │   ├── httpapi/              # [done] signup session endpoints
+│   │   │   ├── store/                # [done] pgx
+│   │   │   ├── signup/               # [1C] account creation orchestration
+│   │   │   ├── session/              # [1C] access+refresh tokens, device sessions
+│   │   │   ├── account/              # [1C] manage, delete (grace period), restore
+│   │   │   ├── emailotp/             # [1C] optional email verify via OTP
+│   │   │   ├── staffaccess/          # [1C] staff lookup by number + audit log
+│   │   │   ├── clients/              # gRPC clients: face, risk, notify
+│   │   │   ├── outbox/               # transactional outbox -> events
+│   │   │   └── grpcapi/              # internal gRPC server
+│   │   ├── migrations/               # Step 1A ki SQL yahan aayegi (neeche dekho)
+│   │   ├── Dockerfile
+│   │   └── go.mod
+│   │
+│   ├── face/                         # [Python] Step 1B: detect, liveness, embed, match
+│   │   ├── app/
+│   │   │   ├── main.py               # FastAPI + gRPC
+│   │   │   ├── detect.py
+│   │   │   ├── liveness.py           # challenge-response + anti-spoof model
+│   │   │   ├── embed.py              # ArcFace (onnxruntime)
+│   │   │   ├── match.py              # threshold + duplicate-face check
+│   │   │   ├── crypto.py             # template encryption (envelope, KMS key)
+│   │   │   └── store.py              # pgvector (apna alag DB)
+│   │   ├── models/                   # .onnx weights (git-lfs / object storage)
+│   │   ├── migrations/
+│   │   ├── tests/
+│   │   ├── Dockerfile
+│   │   └── pyproject.toml
+│   │
+│   ├── risk/                         # [Python] zikriyon-prism yahan chalega
+│   │   ├── app/
+│   │   │   ├── main.py               # gRPC server
+│   │   │   ├── engine.py             # RuleEngine wrapper + fallback
+│   │   │   ├── cloud.py              # CloudClient (optional, license env secret se)
+│   │   │   └── signals.py            # event ko Prism ke dict me badalna
+│   │   ├── rules/                    # signup_abuse.yaml, login_risk.yaml, phishing.yaml
+│   │   ├── tests/
+│   │   ├── Dockerfile
+│   │   └── pyproject.toml
+│   │
+│   └── notify/                       # [Go] Step 1C: email OTP/link bhejna (queue worker)
+│       ├── cmd/notify/main.go
+│       └── internal/{queue,smtp,templates}/
+│
+├── pkg/                              # chhote shared Go libs (sirf utility, business logic nahi)
+│   ├── logging/  ├── tracing/  ├── grpcx/  └── httpx/
+│
+├── deploy/
+│   ├── docker-compose.yml            # [done] local dev: postgres, redis, + services
+│   ├── .env.example
+│   ├── k8s/                          # Phase 7: Helm charts / manifests
+│   └── observability/                # prometheus, grafana, loki, otel-collector
+│
+├── docs/
+│   ├── architecture.md
+│   ├── adr/                          # architecture decisions (ek file per decision)
+│   ├── security.md                   # biometric policy, DPDP, key management
+│   └── runbooks/
+│
+└── db/migrations/0001_identity_core.sql   # [done] -> baad me services/auth/migrations/ me move hoga
