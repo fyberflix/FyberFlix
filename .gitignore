@@ -1,0 +1,5 @@
+deploy/.env
+.venv/
+__pycache__/
+*.pyc
+services/face/models/*.onnx
