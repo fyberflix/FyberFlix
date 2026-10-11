@@ -1,4 +1,4 @@
-// Package httpapi exposes the signup-session endpoints of auth-service.
+// Package httpapi exposes auth-service's public HTTP API.
 package httpapi
 
 import (
@@ -11,197 +11,123 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/zeaipc/fyberflix/services/auth/internal/identity"
+	"github.com/zeaipc/fyberflix/services/auth/internal/faceclient"
+	"github.com/zeaipc/fyberflix/services/auth/internal/token"
 )
 
 var (
-	ErrNoSession    = errors.New("signup session not found or expired")
-	ErrWrongState   = errors.New("action not allowed in the current signup state")
-	ErrNotHeld      = errors.New("number is not currently offered to this session")
-	ErrRefreshLimit = errors.New("number refresh limit reached")
+	ErrNoSession      = errors.New("signup session not found or expired")
+	ErrWrongState     = errors.New("action not allowed in the current signup state")
+	ErrNotHeld        = errors.New("number is not currently offered to this session")
+	ErrRefreshLimit   = errors.New("number refresh limit reached")
+	ErrNotFound       = errors.New("not found")
+	ErrNameTaken      = errors.New("this Fyber Cable name is already taken")
+	ErrInvalidRefresh = errors.New("invalid refresh token")
+	ErrRefreshReuse   = errors.New("refresh token reuse detected")
+	ErrNoAttempt      = errors.New("login attempt not found or expired")
 )
+
+type User struct {
+	ID, Number, CableName, Status, FaceRef string
+	CreatedAt                              time.Time
+}
+
+type SignupSession struct {
+	State, Number, CableName, FaceRef string
+	Consented                         bool
+}
+
+type LoginAttempt struct{ UserID, FaceChallengeID string }
+
+// Face is the subset of face-service the HTTP layer needs.
+type Face interface {
+	Challenge(ctx context.Context, ref, purpose string) (faceclient.Challenge, error)
+	Enroll(ctx context.Context, ref, challengeID string, frames [][]byte) (faceclient.Outcome, error)
+	Verify(ctx context.Context, ref, challengeID string, frames [][]byte) (faceclient.Outcome, error)
+}
 
 // Store is everything the HTTP layer needs from persistence.
 type Store interface {
+	// --- signup session ---
 	CreateSession(ctx context.Context, tokenHash []byte, ip, ua string, expires time.Time) error
-	// RequireState returns ErrNoSession (missing/expired) or ErrWrongState.
-	RequireState(ctx context.Context, tokenHash []byte, allowed ...string) error
-	// HoldNumbers reserves free numbers from candidates; returns those actually held.
+	RequireState(ctx context.Context, tokenHash []byte, allowed ...string) error // ErrNoSession | ErrWrongState
+	GetSignup(ctx context.Context, tokenHash []byte) (SignupSession, error)
 	HoldNumbers(ctx context.Context, tokenHash []byte, candidates []string, until time.Time) ([]string, error)
-	// ReleaseForRefresh frees this session's holds and counts a refresh (ErrRefreshLimit when exhausted).
 	ReleaseForRefresh(ctx context.Context, tokenHash []byte, maxRefresh int) error
 	SelectNumber(ctx context.Context, tokenHash []byte, number string, until time.Time) error
 	CableNameTaken(ctx context.Context, key string) (bool, error)
 	SetCableName(ctx context.Context, tokenHash []byte, display string) error
+	RecordConsent(ctx context.Context, tokenHash []byte, version string) error
+	MarkFaceChecked(ctx context.Context, tokenHash []byte) error
+	CreateAccount(ctx context.Context, tokenHash []byte) (User, error)   // face_checked -> account_created (user pending)
+	ActivateAccount(ctx context.Context, tokenHash []byte) (User, error) // account_created -> completed (user active)
+
+	// --- login & device sessions ---
+	FindUserByIdentifier(ctx context.Context, ident string) (User, error) // 9-digit number or cable name
+	GetUser(ctx context.Context, id string) (User, error)
+	CreateLoginAttempt(ctx context.Context, tokenHash []byte, userID, faceChallengeID string, expires time.Time) error
+	TakeLoginAttempt(ctx context.Context, tokenHash []byte) (LoginAttempt, error) // single use
+	CreateAuthSession(ctx context.Context, id, userID string, refreshHash []byte, ip, ua string, expires time.Time) error
+	RotateRefresh(ctx context.Context, sessionID string, presented, next []byte, expires time.Time) (userID string, err error)
+	RevokeSession(ctx context.Context, sessionID string, presented []byte) error
+	RevokeAllSessions(ctx context.Context, userID string) error
+
+	// --- abuse control ---
+	Hit(ctx context.Context, key string, window time.Duration) (int, error)
 }
 
 type Config struct {
-	SessionTTL, HoldTTL time.Duration
-	MaxRefresh          int
+	SessionTTL, HoldTTL, RefreshTTL time.Duration
+	MaxRefresh                      int
+	PublicBaseURL                   string
 }
 
 type Server struct {
-	st  Store
-	cfg Config
-	log *slog.Logger
+	st   Store
+	face Face
+	tok  *token.Signer
+	cfg  Config
+	log  *slog.Logger
 }
 
-func New(st Store, cfg Config, log *slog.Logger) *Server { return &Server{st: st, cfg: cfg, log: log} }
+func New(st Store, face Face, tok *token.Signer, cfg Config, log *slog.Logger) *Server {
+	return &Server{st: st, face: face, tok: tok, cfg: cfg, log: log}
+}
 
 func (s *Server) Handler() http.Handler {
 	m := http.NewServeMux()
 	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	m.HandleFunc("GET /.well-known/jwks.json", s.jwks)
+
 	m.HandleFunc("POST /v1/signup/sessions", s.createSession)
 	m.HandleFunc("POST /v1/signup/number-offers/refresh", s.refreshOffers)
 	m.HandleFunc("POST /v1/signup/number", s.selectNumber)
 	m.HandleFunc("GET /v1/signup/cable-name/check", s.checkName)
 	m.HandleFunc("POST /v1/signup/cable-name", s.setName)
+	m.HandleFunc("POST /v1/signup/consent", s.consent)
+	m.HandleFunc("POST /v1/signup/face/challenge", s.faceChallenge)
+	m.HandleFunc("POST /v1/signup/face", s.faceSubmit)
+	m.HandleFunc("POST /v1/signup/account", s.createAccount)
+
+	m.HandleFunc("POST /v1/login/start", s.loginStart)
+	m.HandleFunc("POST /v1/login/face", s.loginFace)
+
+	m.HandleFunc("POST /v1/token/refresh", s.refresh)
+	m.HandleFunc("POST /v1/logout", s.logout)
+	m.HandleFunc("POST /v1/logout-all", s.logoutAll)
+	m.HandleFunc("GET /v1/me", s.me)
 	return secure(m)
 }
 
-func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		s.fail(w, err)
-		return
-	}
-	token := base64.RawURLEncoding.EncodeToString(raw)
-	hash := hashToken(token)
-	expires := time.Now().Add(s.cfg.SessionTTL)
-	if err := s.st.CreateSession(r.Context(), hash, clientIP(r), r.UserAgent(), expires); err != nil {
-		s.fail(w, err)
-		return
-	}
-	offers, err := s.offer(r.Context(), hash)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"session_token": token, "expires_at": expires, "number_offers": offers,
-	})
-}
-
-func (s *Server) refreshOffers(w http.ResponseWriter, r *http.Request) {
-	hash, ok := s.session(w, r, "started")
-	if !ok {
-		return
-	}
-	if err := s.st.ReleaseForRefresh(r.Context(), hash, s.cfg.MaxRefresh); err != nil {
-		s.fail(w, err)
-		return
-	}
-	offers, err := s.offer(r.Context(), hash)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"number_offers": offers})
-}
-
-func (s *Server) selectNumber(w http.ResponseWriter, r *http.Request) {
-	hash, ok := s.session(w, r, "started")
-	if !ok {
-		return
-	}
-	var in struct {
-		Number string `json:"number"`
-	}
-	if !decode(w, r, &in) {
-		return
-	}
-	if len(in.Number) != 9 {
-		writeErr(w, http.StatusBadRequest, "invalid_number", "number must be 9 digits")
-		return
-	}
-	if err := s.st.SelectNumber(r.Context(), hash, in.Number, time.Now().Add(s.cfg.SessionTTL)); err != nil {
-		s.fail(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"selected_number": in.Number, "state": "number_selected"})
-}
-
-func (s *Server) checkName(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.session(w, r, "number_selected", "name_chosen"); !ok {
-		return
-	}
-	_, key, err := identity.ParseCableName(r.URL.Query().Get("name"))
-	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"available": false, "reason": err.Error()})
-		return
-	}
-	taken, err := s.st.CableNameTaken(r.Context(), key)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	resp := map[string]any{"available": !taken}
-	if taken {
-		resp["reason"] = "this Fyber Cable name is already taken"
-	}
-	writeJSON(w, http.StatusOK, resp)
-}
-
-// setName records the choice. It does NOT reserve it: the UNIQUE constraint on
-// users.fyber_cable_key at account creation is the real guarantee.
-func (s *Server) setName(w http.ResponseWriter, r *http.Request) {
-	hash, ok := s.session(w, r, "number_selected", "name_chosen")
-	if !ok {
-		return
-	}
-	var in struct {
-		Name string `json:"name"`
-	}
-	if !decode(w, r, &in) {
-		return
-	}
-	display, key, err := identity.ParseCableName(in.Name)
-	if err != nil {
-		writeErr(w, http.StatusUnprocessableEntity, "invalid_name", err.Error())
-		return
-	}
-	if taken, err := s.st.CableNameTaken(r.Context(), key); err != nil {
-		s.fail(w, err)
-		return
-	} else if taken {
-		writeErr(w, http.StatusConflict, "name_taken", "this Fyber Cable name is already taken")
-		return
-	}
-	if err := s.st.SetCableName(r.Context(), hash, display); err != nil {
-		s.fail(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"fyber_cable_name": display, "state": "name_chosen",
-		"profile_url": "https://FyberFlix.zeaipc.in/" + display})
-}
-
-// offer holds 10 free numbers for this session (retrying on collisions).
-func (s *Server) offer(ctx context.Context, hash []byte) ([]string, error) {
-	var held []string
-	until := time.Now().Add(s.cfg.HoldTTL)
-	for attempt := 0; attempt < 6 && len(held) < identity.OfferCount(); attempt++ {
-		cands, err := identity.Candidates(identity.OfferCount() - len(held))
-		if err != nil {
-			return nil, err
-		}
-		got, err := s.st.HoldNumbers(ctx, hash, cands, until)
-		if err != nil {
-			return nil, err
-		}
-		held = append(held, got...)
-	}
-	if len(held) < identity.OfferCount() {
-		return nil, errors.New("could not allocate number offers")
-	}
-	return held, nil
-}
+// ---------- shared helpers ----------
 
 func (s *Server) session(w http.ResponseWriter, r *http.Request, allowed ...string) ([]byte, bool) {
-	tok, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if !ok || tok == "" {
+	tok, ok := bearer(r)
+	if !ok {
 		writeErr(w, http.StatusUnauthorized, "no_session", "missing signup session token")
 		return nil, false
 	}
@@ -211,6 +137,22 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request, allowed ...stri
 		return nil, false
 	}
 	return hash, true
+}
+
+// limit enforces a fixed-window counter. It fails open if the counter store errors,
+// because locking everyone out is worse; the error is logged.
+func (s *Server) limit(w http.ResponseWriter, r *http.Request, key string, max int, window time.Duration) bool {
+	n, err := s.st.Hit(r.Context(), key, window)
+	if err != nil {
+		s.log.Error("rate limiter error", "err", err)
+		return true
+	}
+	if n > max {
+		w.Header().Set("Retry-After", strconv.Itoa(int(window.Seconds())))
+		writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many attempts, try again later")
+		return false
+	}
+	return true
 }
 
 func (s *Server) fail(w http.ResponseWriter, err error) {
@@ -223,10 +165,35 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		writeErr(w, http.StatusConflict, "number_not_offered", err.Error())
 	case errors.Is(err, ErrRefreshLimit):
 		writeErr(w, http.StatusTooManyRequests, "refresh_limit", err.Error())
+	case errors.Is(err, ErrNameTaken):
+		writeErr(w, http.StatusConflict, "name_taken", err.Error())
+	case errors.Is(err, ErrNotFound):
+		writeErr(w, http.StatusNotFound, "not_found", "account not found")
+	case errors.Is(err, ErrInvalidRefresh):
+		writeErr(w, http.StatusUnauthorized, "invalid_refresh", "invalid refresh token")
+	case errors.Is(err, ErrRefreshReuse):
+		writeErr(w, http.StatusUnauthorized, "session_revoked", "this session was revoked, please log in again")
+	case errors.Is(err, faceclient.ErrUnavailable):
+		s.log.Error("face service unavailable", "err", err)
+		writeErr(w, http.StatusServiceUnavailable, "face_unavailable", "face verification is temporarily unavailable")
 	default:
 		s.log.Error("internal error", "err", err)
 		writeErr(w, http.StatusInternalServerError, "internal", "something went wrong")
 	}
+}
+
+func bearer(r *http.Request) (string, bool) {
+	t, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	return t, ok && t != ""
+}
+
+func randomToken() (string, []byte, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", nil, err
+	}
+	t := base64.RawURLEncoding.EncodeToString(raw)
+	return t, hashToken(t), nil
 }
 
 func hashToken(t string) []byte { h := sha256.Sum256([]byte(t)); return h[:] }
