@@ -13,8 +13,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/zeaipc/fyberflix/services/auth/internal/config"
+	"github.com/zeaipc/fyberflix/services/auth/internal/faceclient"
 	"github.com/zeaipc/fyberflix/services/auth/internal/httpapi"
 	"github.com/zeaipc/fyberflix/services/auth/internal/store"
+	"github.com/zeaipc/fyberflix/services/auth/internal/token"
 )
 
 func main() {
@@ -22,6 +24,11 @@ func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		log.Error("config", "err", err)
+		os.Exit(1)
+	}
+	signer, err := token.NewSigner(cfg.JWTSeed, cfg.JWTKeyID, cfg.TokenIssuer, cfg.TokenAudience, cfg.AccessTTL)
+	if err != nil {
+		log.Error("token signer", "err", err)
 		os.Exit(1)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -34,12 +41,13 @@ func main() {
 	}
 	defer pool.Close()
 
-	api := httpapi.New(store.New(pool),
-		httpapi.Config{SessionTTL: cfg.SessionTTL, HoldTTL: cfg.HoldTTL, MaxRefresh: cfg.MaxRefresh}, log)
+	api := httpapi.New(store.New(pool), faceclient.New(cfg.FaceURL, cfg.FaceToken), signer,
+		httpapi.Config{SessionTTL: cfg.SessionTTL, HoldTTL: cfg.HoldTTL, RefreshTTL: cfg.RefreshTTL,
+			MaxRefresh: cfg.MaxRefresh, PublicBaseURL: cfg.PublicBaseURL}, log)
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr, Handler: api.Handler(),
-		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second,
-		WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 40 * time.Second, // face frames upload
+		WriteTimeout: 60 * time.Second, IdleTimeout: 60 * time.Second,
 	}
 	go func() {
 		<-ctx.Done()
