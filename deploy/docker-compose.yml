@@ -4,28 +4,63 @@ services:
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: fyber
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
-      POSTGRES_DB: fyberflix_auth        # one database per microservice
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run deploy/gen-env.sh first}
+      POSTGRES_DB: postgres
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ../db/migrations:/docker-entrypoint-initdb.d:ro
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fyber -d fyberflix_auth"]
+      test: ["CMD-SHELL", "pg_isready -U fyber -d postgres"]
       interval: 5s
-      retries: 10
+      retries: 12
     ports: ["127.0.0.1:5432:5432"]
 
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
-    ports: ["127.0.0.1:6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 12
+
+  migrate-auth:
+    image: migrate/migrate:v4.18.1
+    command: ["-path=/migrations", "-database=postgres://fyber:${POSTGRES_PASSWORD}@postgres:5432/fyberflix_auth?sslmode=disable", "up"]
+    volumes: ["../services/auth/migrations:/migrations:ro"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  migrate-face:
+    image: migrate/migrate:v4.18.1
+    command: ["-path=/migrations", "-database=postgres://fyber:${POSTGRES_PASSWORD}@postgres:5432/fyberflix_face?sslmode=disable", "up"]
+    volumes: ["../services/face/migrations:/migrations:ro"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  face:                                   # internal only: no published port
+    build: ../services/face
+    environment:
+      FACE_KEYS: ${FACE_KEYS:?}
+      FACE_ACTIVE_KEY: ${FACE_ACTIVE_KEY:?}
+      FACE_SERVICE_TOKEN: ${FACE_SERVICE_TOKEN:?}
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgres://fyber:${POSTGRES_PASSWORD}@postgres:5432/fyberflix_face
+    depends_on:
+      redis: { condition: service_healthy }
+      migrate-face: { condition: service_completed_successfully }
 
   auth:
     build: ../services/auth
     environment:
       DATABASE_URL: postgres://fyber:${POSTGRES_PASSWORD}@postgres:5432/fyberflix_auth
+      FACE_URL: http://face:8090
+      FACE_SERVICE_TOKEN: ${FACE_SERVICE_TOKEN:?}
+      AUTH_JWT_SEED: ${AUTH_JWT_SEED:?}
+      AUTH_JWT_KID: ${AUTH_JWT_KID:-k1}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
     depends_on:
-      postgres: { condition: service_healthy }
+      migrate-auth: { condition: service_completed_successfully }
+      face: { condition: service_started }
     ports: ["127.0.0.1:8080:8080"]
 
 volumes:
