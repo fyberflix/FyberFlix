@@ -105,10 +105,13 @@ func (p *PG) SelectNumber(ctx context.Context, h []byte, number string, until ti
 	})
 }
 
+// CableNameTaken is true if a user holds the name OR it was released less than 90 days ago.
 func (p *PG) CableNameTaken(ctx context.Context, key string) (bool, error) {
 	var taken bool
 	err := p.pool.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM users WHERE fyber_cable_key=$1)`, key).Scan(&taken)
+		`SELECT EXISTS (SELECT 1 FROM users WHERE fyber_cable_key=$1)
+		     OR EXISTS (SELECT 1 FROM cable_name_history
+		                 WHERE key=$1 AND released_at > now() - interval '90 days')`, key).Scan(&taken)
 	return taken, err
 }
 
