@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS audit_log;
+DROP FUNCTION IF EXISTS audit_log_immutable();
+DROP TABLE IF EXISTS staff_roles;
+DROP TRIGGER IF EXISTS users_recent_cable_name ON users;
+DROP FUNCTION IF EXISTS forbid_recent_cable_name();
+DROP TABLE IF EXISTS cable_name_history;
+DROP TABLE IF EXISTS face_attempts;
+DROP TABLE IF EXISTS email_otps;
+DROP INDEX IF EXISTS users_email_verified_uq;
+ALTER TABLE users DROP COLUMN IF EXISTS cable_name_changed_at, DROP COLUMN IF EXISTS deletion_scheduled_at;
