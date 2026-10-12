@@ -92,6 +92,9 @@ type Server struct {
 	tok  *token.Signer
 	cfg  Config
 	log  *slog.Logger
+	acct   AccountStore // set by WithAccount
+	mailer Mailer
+	acfg   AccountConfig
 }
 
 func New(st Store, face Face, tok *token.Signer, cfg Config, log *slog.Logger) *Server {
