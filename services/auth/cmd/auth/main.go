@@ -15,6 +15,8 @@ import (
 	"github.com/zeaipc/fyberflix/services/auth/internal/config"
 	"github.com/zeaipc/fyberflix/services/auth/internal/faceclient"
 	"github.com/zeaipc/fyberflix/services/auth/internal/httpapi"
+	"github.com/zeaipc/fyberflix/services/auth/internal/janitor"
+	"github.com/zeaipc/fyberflix/services/auth/internal/mailer"
 	"github.com/zeaipc/fyberflix/services/auth/internal/store"
 	"github.com/zeaipc/fyberflix/services/auth/internal/token"
 )
@@ -22,6 +24,11 @@ import (
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	cfg, err := config.Load()
+	if err != nil {
+		log.Error("config", "err", err)
+		os.Exit(1)
+	}
+	acc, err := config.LoadAccount()
 	if err != nil {
 		log.Error("config", "err", err)
 		os.Exit(1)
@@ -41,9 +48,18 @@ func main() {
 	}
 	defer pool.Close()
 
-	api := httpapi.New(store.New(pool), faceclient.New(cfg.FaceURL, cfg.FaceToken), signer,
+	pg := store.New(pool)
+	face := faceclient.New(cfg.FaceURL, cfg.FaceToken)
+	var mail httpapi.Mailer = mailer.Log{L: log}
+	if acc.MailMode == "smtp" {
+		mail = mailer.SMTP{Host: acc.SMTPHost, Port: acc.SMTPPort, User: acc.SMTPUser, Pass: acc.SMTPPass, From: acc.SMTPFrom}
+	}
+	api := httpapi.New(pg, face, signer,
 		httpapi.Config{SessionTTL: cfg.SessionTTL, HoldTTL: cfg.HoldTTL, RefreshTTL: cfg.RefreshTTL,
-			MaxRefresh: cfg.MaxRefresh, PublicBaseURL: cfg.PublicBaseURL}, log)
+			MaxRefresh: cfg.MaxRefresh, PublicBaseURL: cfg.PublicBaseURL}, log).
+		WithAccount(pg, mail, httpapi.AccountConfig{OTPPepper: acc.OTPPepper})
+	go janitor.Run(ctx, pg, face, log, 5*time.Minute)
+
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr, Handler: api.Handler(),
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 40 * time.Second, // face frames upload
