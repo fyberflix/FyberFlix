@@ -58,6 +58,14 @@ services:
       AUTH_JWT_SEED: ${AUTH_JWT_SEED:?}
       AUTH_JWT_KID: ${AUTH_JWT_KID:-k1}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      OTP_PEPPER: ${OTP_PEPPER:?}
+      APP_ENV: ${APP_ENV:-development}
+      MAIL_MODE: ${MAIL_MODE:-log}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     depends_on:
       migrate-auth: { condition: service_completed_successfully }
       face: { condition: service_started }
