@@ -123,6 +123,7 @@ func (s *Server) Handler() http.Handler {
 	m.HandleFunc("POST /v1/logout", s.logout)
 	m.HandleFunc("POST /v1/logout-all", s.logoutAll)
 	m.HandleFunc("GET /v1/me", s.me)
+	s.accountRoutes(m)
 	return secure(m)
 }
 
