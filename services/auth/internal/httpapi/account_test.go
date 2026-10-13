@@ -234,13 +234,14 @@ func (a *memAcct) has(action, target string) bool {
 type fakeMail struct {
 	to, code string
 	fail     bool
+	notices  []string // "to|subject|body"
 }
 
-func (f *fakeMail) SendOTP(_ context.Context, to, code string, _ time.Duration) error {
+func (f *fakeMail) SendNotice(_ context.Context, to, subject, body string) error {
 	if f.fail {
 		return errors.New("smtp down")
 	}
-	f.to, f.code = to, code
+	f.notices = append(f.notices, to+"|"+subject+"|"+body)
 	return nil
 }
 
