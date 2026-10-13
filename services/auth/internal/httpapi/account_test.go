@@ -568,3 +568,40 @@ func TestStaff(t *testing.T) {
 		t.Fatalf("role revoke must apply at once: %d", c)
 	}
 }
+func TestPublicProfile(t *testing.T) {
+	e := setupAcct(t)
+	number, _, id := e.user("Arman_Films")
+
+	for _, ident := range []string{"Arman_Films", "arman_films", number, "@Arman_Films"} {
+		c, m := e.js("GET", "/v1/profiles/"+ident, "", "")
+		e.want(c, m, 200)
+		if str(m, "id") != id || str(m, "fyber_cable_name") != "Arman_Films" || str(m, "fyberflix_number") != number {
+			t.Fatalf("%s resolves differently: %v", ident, m)
+		}
+		for _, secret := range []string{"email", "face_ref", "status"} {
+			if _, leaked := m[secret]; leaked {
+				t.Fatalf("%s must not be public", secret)
+			}
+		}
+	}
+	// cable name and number lead to the same creator
+	_, a := e.js("GET", "/v1/profiles/Arman_Films", "", "")
+	_, b := e.js("GET", "/v1/profiles/"+number, "", "")
+	if str(a, "id") != str(b, "id") {
+		t.Fatal("name and number must resolve to the same user")
+	}
+	for _, bad := range []string{"nobody_here", "a%20b", "123456789", "ab"} {
+		if c, _ := e.js("GET", "/v1/profiles/"+bad, "", ""); c != 404 {
+			t.Fatalf("%q: want 404, got %d", bad, c)
+		}
+	}
+	// suspended and deletion-pending accounts look like missing ones
+	e.acct.users[id].Status = "suspended"
+	if c, _ := e.js("GET", "/v1/profiles/Arman_Films", "", ""); c != 404 {
+		t.Fatalf("suspended must be hidden: %d", c)
+	}
+	e.acct.users[id].Status = "deletion_pending"
+	if c, _ := e.js("GET", "/v1/profiles/"+number, "", ""); c != 404 {
+		t.Fatalf("pending deletion must be hidden: %d", c)
+	}
+}
