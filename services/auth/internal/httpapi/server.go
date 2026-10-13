@@ -95,6 +95,8 @@ type Server struct {
 	acct   AccountStore // set by WithAccount
 	mailer Mailer
 	acfg   AccountConfig
+    risk   Risk // set by WithRisk
+	blocks Blocklist
 }
 
 func New(st Store, face Face, tok *token.Signer, cfg Config, log *slog.Logger) *Server {
