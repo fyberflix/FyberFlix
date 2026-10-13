@@ -442,6 +442,8 @@ func (p *PG) PurgeUser(ctx context.Context, userID string) error {
 			`DELETE FROM login_attempts WHERE user_id=$1::uuid`,
 			`DELETE FROM face_attempts WHERE user_id=$1::uuid`,
 			`DELETE FROM email_otps WHERE user_id=$1::uuid`,
+			`DELETE FROM recovery_otps WHERE user_id=$1::uuid`,
+			`DELETE FROM recovery_requests WHERE user_id=$1::uuid`,
 			`DELETE FROM staff_roles WHERE user_id=$1::uuid`,
 		} {
 			if _, err = tx.Exec(ctx, q, userID); err != nil {
