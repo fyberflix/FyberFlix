@@ -111,6 +111,12 @@ func (s *Server) setName(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnprocessableEntity, "invalid_name", err.Error())
 		return
 	}
+	if ok, rules := s.nameAllowed(r.Context(), hash, display); !ok {
+		s.log.Info("cable name rejected by risk", "rules", rules)
+		writeErr(w, http.StatusUnprocessableEntity, "name_not_allowed",
+			"this name looks like it could be used to impersonate or trick people, please choose another")
+		return
+	}
 	if taken, err := s.st.CableNameTaken(r.Context(), key); err != nil {
 		s.fail(w, err)
 		return
