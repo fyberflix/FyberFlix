@@ -1,8 +1,8 @@
 version: 1
 spec_id: auth_risk
 description: >
-  FyberFlix signup/login risk rules. Brute-force limiting is NOT here:
-  it lives in auth-service (Redis, shared across replicas).
+  FyberFlix signup risk rules (content checks). Failed-login counting is NOT here:
+  see login_fail.yaml (a rate rule counts evaluate() calls, so it needs its own spec).
 
 settings:
   case_sensitive: false
@@ -11,7 +11,7 @@ settings:
 
 severity_levels:
   low:      { weight: 1, action: flag }      # log only
-  medium:   { weight: 2, action: step_up }   # ask for extra verification
+  medium:   { weight: 2, action: step_up }   # not allowed as-is
   high:     { weight: 3, action: step_up }
   critical: { weight: 4, action: deny }
 
