@@ -139,6 +139,8 @@ func (s *Server) failAcct(w http.ResponseWriter, err error) {
 		writeErr(w, http.StatusConflict, "email_taken", err.Error())
 	case errors.Is(err, ErrRenameCooldown):
 		writeErr(w, http.StatusTooManyRequests, "rename_cooldown", err.Error())
+	case errors.Is(err, ErrRecoveryOpen):
+		writeErr(w, http.StatusConflict, "recovery_open", err.Error())
 	case errors.Is(err, ErrForbidden):
 		writeErr(w, http.StatusForbidden, "forbidden", "not allowed")
 	default:
