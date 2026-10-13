@@ -76,6 +76,9 @@ type AccountConfig struct {
 	OTPMaxAttempts int
 	DeleteGrace    time.Duration
 	RenameCooldown time.Duration
+// AccountConfig mein RenameCooldown ke baad
+	RecoveryWait   time.Duration // delay before an approved recovery becomes usable (default 7 days)
+	RecoveryTTL    time.Duration // how long an open recovery request lives (default 30 days)
 }
 
 // WithAccount enables the account-management and staff endpoints.
@@ -91,6 +94,12 @@ func (s *Server) WithAccount(a AccountStore, m Mailer, c AccountConfig) *Server 
 	}
 	if c.RenameCooldown == 0 {
 		c.RenameCooldown = 30 * 24 * time.Hour
+	}
+	if c.RecoveryWait == 0 {
+		c.RecoveryWait = 7 * 24 * time.Hour
+	}
+	if c.RecoveryTTL == 0 {
+		c.RecoveryTTL = 30 * 24 * time.Hour
 	}
 	s.acct, s.mailer, s.acfg = a, m, c
 	return s
