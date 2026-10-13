@@ -77,6 +77,18 @@ services:
       migrate-auth: { condition: service_completed_successfully }
       face: { condition: service_started }
       risk: { condition: service_started }
+    expose: ["8080"]                       # NOT published: only the gateway may reach auth
+
+  gateway:                                # the only service reachable from outside
+    build: ../services/gateway
+    environment:
+      GATEWAY_ADDR: ":8080"
+      UPSTREAM_AUTH: http://auth:8080
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      STAFF_CIDRS: ${STAFF_CIDRS:-127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+    depends_on:
+      auth: { condition: service_started }
     ports: ["127.0.0.1:8080:8080"]
 
 volumes:
