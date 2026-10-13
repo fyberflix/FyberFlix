@@ -305,6 +305,14 @@ func (f *fakeFace) Verify(_ context.Context, ref, cid string, fr [][]byte) (face
 	return f.result(fr), nil
 }
 
+func (f *fakeFace) Delete(_ context.Context, ref string) error {
+	if f.down {
+		return faceclient.ErrUnavailable
+	}
+	delete(f.enrolled, ref)
+	return nil
+}
+
 // ---------------- helpers ----------------
 
 type env struct {
