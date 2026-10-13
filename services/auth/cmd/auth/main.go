@@ -17,6 +17,7 @@ import (
 	"github.com/zeaipc/fyberflix/services/auth/internal/httpapi"
 	"github.com/zeaipc/fyberflix/services/auth/internal/janitor"
 	"github.com/zeaipc/fyberflix/services/auth/internal/mailer"
+	"github.com/zeaipc/fyberflix/services/auth/internal/riskclient"
 	"github.com/zeaipc/fyberflix/services/auth/internal/store"
 	"github.com/zeaipc/fyberflix/services/auth/internal/token"
 )
@@ -29,6 +30,11 @@ func main() {
 		os.Exit(1)
 	}
 	acc, err := config.LoadAccount()
+	if err != nil {
+		log.Error("config", "err", err)
+		os.Exit(1)
+	}
+	rk, err := config.LoadRisk(acc.AppEnv)
 	if err != nil {
 		log.Error("config", "err", err)
 		os.Exit(1)
@@ -58,8 +64,12 @@ func main() {
 		httpapi.Config{SessionTTL: cfg.SessionTTL, HoldTTL: cfg.HoldTTL, RefreshTTL: cfg.RefreshTTL,
 			MaxRefresh: cfg.MaxRefresh, PublicBaseURL: cfg.PublicBaseURL}, log).
 		WithAccount(pg, mail, httpapi.AccountConfig{OTPPepper: acc.OTPPepper})
+	if rk.URL != "" {
+		api.WithRisk(riskclient.New(rk.URL, rk.Token), pg)
+	} else {
+		log.Warn("RISK_URL not set: risk checks are OFF (development only)")
+	}
 	go janitor.Run(ctx, pg, face, log, 5*time.Minute)
-
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr, Handler: api.Handler(),
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 40 * time.Second, // face frames upload
