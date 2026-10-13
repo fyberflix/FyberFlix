@@ -64,6 +64,8 @@ services:
       AUTH_JWT_KID: ${AUTH_JWT_KID:-k1}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
       OTP_PEPPER: ${OTP_PEPPER:?}
+      RISK_URL: http://risk:8091
+      RISK_SERVICE_TOKEN: ${RISK_SERVICE_TOKEN:?}
       APP_ENV: ${APP_ENV:-development}
       MAIL_MODE: ${MAIL_MODE:-log}
       SMTP_HOST: ${SMTP_HOST:-}
@@ -74,6 +76,7 @@ services:
     depends_on:
       migrate-auth: { condition: service_completed_successfully }
       face: { condition: service_started }
+      risk: { condition: service_started }
     ports: ["127.0.0.1:8080:8080"]
 
 volumes:
