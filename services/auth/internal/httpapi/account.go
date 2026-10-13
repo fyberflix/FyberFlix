@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zeaipc/fyberflix/services/auth/internal/identity"
-	"github.com/zeaipc/fyberflix/services/auth/internal/token"
+	"github.com/fyberflix/fyberflix/services/auth/internal/identity"
+	"github.com/fyberflix/fyberflix/services/auth/internal/token"
 )
 
 var (
@@ -28,6 +28,8 @@ var (
 
 type Mailer interface {
 	SendOTP(ctx context.Context, to, code string, ttl time.Duration) error
+// Mailer interface mein
+	SendNotice(ctx context.Context, to, subject, body string) error
 }
 
 type SessionInfo struct {
