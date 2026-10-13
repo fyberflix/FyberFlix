@@ -20,3 +20,15 @@ func TestBuildMessage(t *testing.T) {
 		t.Error("header injection in From must be rejected")
 	}
 }
+func TestBuildNotice(t *testing.T) {
+	b, err := BuildNotice("FyberFlix <no-reply@zeaipc.in>", "user@example.com", "Recovery requested", "line one\nline two")
+	if err != nil || !strings.Contains(string(b), "Subject: Recovery requested") || !strings.Contains(string(b), "line one\r\nline two") {
+		t.Fatalf("bad notice: %v\n%s", err, b)
+	}
+	if _, err := BuildNotice("a@b.com", "u@example.com", "Hi\r\nBcc: x@y.com", "x"); err == nil {
+		t.Error("header injection in subject must be rejected")
+	}
+	if _, err := BuildNotice("a@b.com", "not-an-email", "Hi", "x"); err == nil {
+		t.Error("invalid recipient must be rejected")
+	}
+}
