@@ -101,12 +101,12 @@ func (s *Server) loginFace(w http.ResponseWriter, r *http.Request) {
 		}
 		s.faceReject(w, "verify", out.Reason)
 		return
-	}
 	tokens, err := s.issue(r.Context(), u, clientIP(r), r.UserAgent())
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
+	s.cancelRecoveryOnLogin(r, u) // the real owner is here: any pending face-reset request is void
 	writeJSON(w, http.StatusOK, map[string]any{"user": s.userView(u), "tokens": tokens})
 }
 
