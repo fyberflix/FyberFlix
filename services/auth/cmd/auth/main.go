@@ -12,14 +12,14 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/zeaipc/fyberflix/services/auth/internal/config"
-	"github.com/zeaipc/fyberflix/services/auth/internal/faceclient"
-	"github.com/zeaipc/fyberflix/services/auth/internal/httpapi"
-	"github.com/zeaipc/fyberflix/services/auth/internal/janitor"
-	"github.com/zeaipc/fyberflix/services/auth/internal/mailer"
-	"github.com/zeaipc/fyberflix/services/auth/internal/riskclient"
-	"github.com/zeaipc/fyberflix/services/auth/internal/store"
-	"github.com/zeaipc/fyberflix/services/auth/internal/token"
+	"github.com/fyberflix/fyberflix/services/auth/internal/config"
+	"github.com/fyberflix/fyberflix/services/auth/internal/faceclient"
+	"github.com/fyberflix/fyberflix/services/auth/internal/httpapi"
+	"github.com/fyberflix/fyberflix/services/auth/internal/janitor"
+	"github.com/fyberflix/fyberflix/services/auth/internal/mailer"
+	"github.com/fyberflix/fyberflix/services/auth/internal/riskclient"
+	"github.com/fyberflix/fyberflix/services/auth/internal/store"
+	"github.com/fyberflix/fyberflix/services/auth/internal/token"
 )
 
 func main() {
