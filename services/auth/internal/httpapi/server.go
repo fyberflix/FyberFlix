@@ -48,6 +48,8 @@ type Face interface {
 	Challenge(ctx context.Context, ref, purpose string) (faceclient.Challenge, error)
 	Enroll(ctx context.Context, ref, challengeID string, frames [][]byte) (faceclient.Outcome, error)
 	Verify(ctx context.Context, ref, challengeID string, frames [][]byte) (faceclient.Outcome, error)
+// Face interface mein Verify ke neeche
+	Delete(ctx context.Context, ref string) error // erase the stored template
 }
 
 // Store is everything the HTTP layer needs from persistence.
@@ -97,6 +99,7 @@ type Server struct {
 	acfg   AccountConfig
     risk   Risk // set by WithRisk
 	blocks Blocklist
+	rec RecoveryStore
 }
 
 func New(st Store, face Face, tok *token.Signer, cfg Config, log *slog.Logger) *Server {
@@ -127,6 +130,7 @@ func (s *Server) Handler() http.Handler {
 	m.HandleFunc("GET /v1/me", s.me)
 	m.HandleFunc("GET /v1/profiles/{ident}", s.publicProfile)
 	s.accountRoutes(m)
+	s.recoveryRoutes(m)
 	return secure(m)
 }
 
