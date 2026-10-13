@@ -36,6 +36,19 @@ func (m SMTP) SendOTP(ctx context.Context, to, code string, ttl time.Duration) e
 	if err != nil {
 		return err
 	}
+	return m.deliver(ctx, to, msg)
+}
+
+// SendNotice sends a plain security notice (recovery requested, cancelled, completed ...).
+func (m SMTP) SendNotice(ctx context.Context, to, subject, body string) error {
+	msg, err := BuildNotice(m.From, to, subject, body)
+	if err != nil {
+		return err
+	}
+	return m.deliver(ctx, to, msg)
+}
+
+func (m SMTP) deliver(ctx context.Context, to string, msg []byte) error {
 	addr := net.JoinHostPort(m.Host, fmt.Sprint(m.Port))
 	d := net.Dialer{Timeout: 10 * time.Second}
 	conn, err := d.DialContext(ctx, "tcp", addr)
@@ -102,4 +115,20 @@ func BuildMessage(from, to, code string, ttl time.Duration) ([]byte, error) {
 		"Date: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n" +
 		"MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n"
 	return []byte(h + body), nil
+}
+// BuildNotice builds a plain-text notice. Subject and body may not contain header-breaking characters.
+func BuildNotice(from, to, subject, body string) ([]byte, error) {
+	for _, v := range []string{from, to, subject} {
+		if strings.ContainsAny(v, "\r\n") {
+			return nil, errors.New("illegal characters in mail field")
+		}
+	}
+	if a, err := mail.ParseAddress(to); err != nil || a.Address != to {
+		return nil, errors.New("invalid recipient")
+	}
+	body = strings.ReplaceAll(strings.ReplaceAll(body, "\r\n", "\n"), "\n", "\r\n")
+	h := "From: " + from + "\r\nTo: " + to + "\r\nSubject: " + subject + "\r\n" +
+		"Date: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n" +
+		"MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n"
+	return []byte(h + body + "\r\n\r\nZEAIPC - Zikr-e-Ameen Innovations & Programming Corporation\r\n"), nil
 }
