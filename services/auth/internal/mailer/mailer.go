@@ -22,6 +22,10 @@ func (m Log) SendOTP(_ context.Context, to, code string, _ time.Duration) error 
 	return nil
 }
 
+func (m Log) SendNotice(_ context.Context, to, subject, body string) error {
+	m.L.Warn("DEV MAIL (not sent)", "to", to, "subject", subject, "body", body)
+	return nil
+}
 type SMTP struct {
 	Host, User, Pass, From string
 	Port                   int
