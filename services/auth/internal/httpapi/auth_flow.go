@@ -18,6 +18,10 @@ func (s *Server) loginStart(w http.ResponseWriter, r *http.Request) {
 	if !s.limit(w, r, "login:ip:"+clientIP(r), 30, 10*time.Minute) {
 		return
 	}
+	// loginStart: pehle IP limit ke turant baad
+	if s.loginBlocked(w, r, "ip:"+clientIP(r)) {
+		return
+	}
 	var in struct {
 		Identifier string `json:"identifier"`
 	}
@@ -39,6 +43,10 @@ func (s *Server) loginStart(w http.ResponseWriter, r *http.Request) {
 	}
 	if u.Status != "active" {
 		writeErr(w, http.StatusForbidden, "account_unavailable", "this account cannot log in right now")
+		return
+	}
+	// loginStart: "account_unavailable" check ke baad, s.face.Challenge se pehle
+	if s.loginBlocked(w, r, "user:"+u.ID) {
 		return
 	}
 	ch, err := s.face.Challenge(r.Context(), u.FaceRef, "verify")
@@ -86,7 +94,11 @@ func (s *Server) loginFace(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+		// loginFace: face fail hone wali branch
 	if !out.OK {
+		if countsAsAttack(out.Reason) {
+			s.recordLoginFailure(r, u.ID)
+		}
 		s.faceReject(w, "verify", out.Reason)
 		return
 	}
