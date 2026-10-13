@@ -49,6 +49,11 @@ services:
       redis: { condition: service_healthy }
       migrate-face: { condition: service_completed_successfully }
 
+  risk:                                   # internal only: no published port
+    build: ../services/risk
+    environment:
+      RISK_SERVICE_TOKEN: ${RISK_SERVICE_TOKEN:?}
+
   auth:
     build: ../services/auth
     environment:
