@@ -333,6 +333,7 @@ func (p *PG) CleanupExpired(ctx context.Context) error {
 	stmts := []string{
 		`DELETE FROM login_attempts WHERE expires_at < now()`,
 		`DELETE FROM face_attempts WHERE expires_at < now()`,
+		`DELETE FROM risk_blocks WHERE until < now() - interval '1 day'`,
 		`DELETE FROM email_otps WHERE expires_at < now() - interval '1 hour'`,
 		`DELETE FROM rate_limits WHERE window_start < now() - interval '2 days'`,
 		`DELETE FROM sessions WHERE expires_at < now() - interval '30 days'
