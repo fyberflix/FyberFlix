@@ -341,6 +341,8 @@ func (p *PG) CleanupExpired(ctx context.Context) error {
 		`DELETE FROM signup_sessions WHERE expires_at < now() - interval '1 day' AND user_id IS NOT NULL`,
 		// held numbers whose signup vanished or whose hold ran out
 		`DELETE FROM number_registry WHERE state='held' AND held_until < now()`,
+		`DELETE FROM recovery_otps WHERE expires_at < now() - interval '1 hour'`,
+		`UPDATE recovery_requests SET state='expired' WHERE state IN ('waiting','approved') AND expires_at <= now()`,
 	}
 	for _, s := range stmts {
 		if _, err := p.pool.Exec(ctx, s); err != nil {
