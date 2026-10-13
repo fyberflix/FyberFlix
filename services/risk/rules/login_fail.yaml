@@ -1,0 +1,28 @@
+version: 1
+spec_id: login_fail
+description: >
+  Failed face-login counter. auth-service evaluates this spec ONLY after a failed
+  attempt, once per subject ("ip:<addr>" and "user:<id>"). Prism's `rate` rule counts
+  evaluate() calls per rule_id:subject_id, not the value of the event field.
+
+settings:
+  case_sensitive: false
+  default_action: allow
+  max_severity_wins: true
+
+severity_levels:
+  low:      { weight: 1, action: flag }
+  medium:   { weight: 2, action: step_up }
+  high:     { weight: 3, action: step_up }
+  critical: { weight: 4, action: deny }
+
+rules:
+  - id: repeated_failed_logins
+    type: rate
+    target: auth.failed_login_count
+    threshold: 5
+    window_seconds: 300
+    severity: critical
+    reason: "Repeated failed face logins"
+
+keyword_lists: {}
