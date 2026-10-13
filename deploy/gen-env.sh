@@ -12,6 +12,7 @@ FACE_SERVICE_TOKEN=$(openssl rand -hex 32)
 AUTH_JWT_SEED=$(openssl rand -base64 32)
 AUTH_JWT_KID=k1
 PUBLIC_BASE_URL=http://localhost:8080
+RISK_SERVICE_TOKEN=$(openssl rand -hex 32)
 OTP_PEPPER=$(openssl rand -base64 32)
 APP_ENV=development
 MAIL_MODE=log
