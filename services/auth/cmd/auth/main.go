@@ -63,8 +63,7 @@ func main() {
 	api := httpapi.New(pg, face, signer,
 		httpapi.Config{SessionTTL: cfg.SessionTTL, HoldTTL: cfg.HoldTTL, RefreshTTL: cfg.RefreshTTL,
 			MaxRefresh: cfg.MaxRefresh, PublicBaseURL: cfg.PublicBaseURL}, log).
-		WithAccount(pg, mail, httpapi.AccountConfig{OTPPepper: acc.OTPPepper})
-	    WithRecovery(pg)
+		WithAccount(pg, mail, httpapi.AccountConfig{OTPPepper: acc.OTPPepper}).WithRecovery(pg)
 	if rk.URL != "" {
 		api.WithRisk(riskclient.New(rk.URL, rk.Token), pg)
 	} else {
