@@ -311,6 +311,12 @@ func (s *Server) renameCable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = key
+	if ok, rules := s.nameAllowed(r.Context(), []byte(u.ID), display); !ok {
+		s.log.Info("cable name rejected by risk", "rules", rules)
+		writeErr(w, http.StatusUnprocessableEntity, "name_not_allowed",
+			"this name looks like it could be used to impersonate or trick people, please choose another")
+		return
+	}
 	if err := s.acct.RenameCable(r.Context(), u.ID, display, s.acfg.RenameCooldown); err != nil {
 		s.failAcct(w, err)
 		return
