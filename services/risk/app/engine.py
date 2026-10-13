@@ -7,14 +7,12 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from zikriyon_prism import RuleEngine
-
 log = logging.getLogger("fyberflix.risk")
 
 
 class Decision(str, Enum):
     ALLOW = "allow"
-    STEP_UP = "step_up"  # require extra verification (e.g. face re-check)
+    STEP_UP = "step_up"  # not allowed as-is / needs extra verification
     DENY = "deny"
 
 
@@ -42,11 +40,17 @@ class RiskEngine:
     """Loads every rules/*.yaml once at startup; one engine per spec."""
 
     def __init__(self, rules_dir: str | Path):
+        from zikriyon_prism import RuleEngine  # imported here so the HTTP layer is testable without it
+
         self._engines: dict[str, RuleEngine] = {}
         for path in sorted(Path(rules_dir).glob("*.yaml")):
             self._engines[path.stem] = RuleEngine.from_file(str(path))
         if not self._engines:
             raise RuntimeError(f"no rule files found in {rules_dir}")
+
+    @property
+    def specs(self) -> frozenset[str]:
+        return frozenset(self._engines)
 
     def evaluate(self, spec: str, event: dict[str, Any], subject_id: str) -> RiskVerdict:
         engine = self._engines.get(spec)
@@ -55,8 +59,7 @@ class RiskEngine:
         try:
             result = engine.evaluate(event, subject_id=subject_id)
         except Exception:
-            # Never allow silently and never hard-lock users because our
-            # risk engine broke: ask for extra verification instead.
+            # Never allow silently and never hard-lock users because our risk engine broke.
             log.exception("prism evaluation failed; degrading to step_up")
             return RiskVerdict(Decision.STEP_UP, degraded=True)
 
