@@ -6,7 +6,6 @@ cd "$(dirname "$0")"
 if grep -q '^S3_ACCESS_KEY=' .env; then echo "content settings already present"; exit 0; fi
 umask 077
 cat >> .env <<ENV
-COMPOSE_FILE=docker-compose.yml:docker-compose.content.yml
 MINIO_ROOT_USER=fyberadmin
 MINIO_ROOT_PASSWORD=$(openssl rand -hex 24)
 S3_ACCESS_KEY=fyberapp
