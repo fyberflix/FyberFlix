@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zeaipc/fyberflix/services/auth/internal/riskclient"
-	"github.com/zeaipc/fyberflix/services/auth/internal/token"
+	"github.com/fyberflix/fyberflix/services/auth/internal/riskclient"
+	"github.com/fyberflix/fyberflix/services/auth/internal/token"
 )
 
 // fakeRisk behaves like the real rules: names containing "secure" need step_up, and the login_fail
