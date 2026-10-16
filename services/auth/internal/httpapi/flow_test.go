@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zeaipc/fyberflix/services/auth/internal/faceclient"
-	"github.com/zeaipc/fyberflix/services/auth/internal/token"
+	"github.com/fyberflix/fyberflix/services/auth/internal/faceclient"
+	"github.com/fyberflix/fyberflix/services/auth/internal/token"
 )
 
 // ---------------- in-memory Store (mirrors the SQL semantics) ----------------
