@@ -16,6 +16,7 @@ type Config struct {
 	Addr         string
 	AuthURL      *url.URL
 	WebURL       *url.URL // optional: serves FyberFlix.zeaipc.in/{name} pages
+	ContentURL   *url.URL // optional: videos / reels (content service)
 	Origins      map[string]bool
 	TrustedProxy []netip.Prefix // load balancers whose X-Forwarded-For we believe
 	StaffNets    []netip.Prefix // where /v1/staff/* may be called from
@@ -31,6 +32,9 @@ func LoadConfig() (Config, error) {
 		return c, err
 	}
 	if c.WebURL, err = parseURL("UPSTREAM_WEB", false); err != nil {
+		return c, err
+	}
+	if c.ContentURL, err = parseURL("UPSTREAM_CONTENT", false); err != nil {
 		return c, err
 	}
 	for _, o := range split(os.Getenv("ALLOWED_ORIGINS")) {
