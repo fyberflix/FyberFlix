@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zeaipc/fyberflix/services/auth/internal/identity"
-	"github.com/zeaipc/fyberflix/services/auth/internal/token"
+	"github.com/fyberflix/fyberflix/services/auth/internal/identity"
+	"github.com/fyberflix/fyberflix/services/auth/internal/token"
 )
 
 var identRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{1,28}[A-Za-z0-9]$`)
