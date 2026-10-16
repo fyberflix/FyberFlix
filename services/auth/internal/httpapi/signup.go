@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/zeaipc/fyberflix/services/auth/internal/identity"
+	"github.com/fyberflix/fyberflix/services/auth/internal/identity"
 )
 
 func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
