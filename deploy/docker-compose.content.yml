@@ -1,0 +1,79 @@
+# Adds reels/videos: MinIO (S3-compatible storage), content API and worker.
+# Enabled by COMPOSE_FILE in deploy/.env (see deploy/add-content-env.sh).
+services:
+  minio:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?run sh deploy/add-content-env.sh}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?run sh deploy/add-content-env.sh}
+    volumes: ["miniodata:/data"]
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
+
+  minio-init:
+    image: minio/mc:RELEASE.2024-11-21T17-21-54Z
+    depends_on: [minio]
+    restart: "no"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        until mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null 2>&1; do sleep 1; done
+        mc mb -p local/fyber-originals local/fyber-media
+        mc anonymous set download local/fyber-media
+        mc admin user add local "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" || true
+        mc admin policy attach local readwrite --user "$$S3_ACCESS_KEY" || true
+        echo "storage ready"
+
+  db-content-init:
+    image: postgres:17-alpine
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes: ["./init-content-db.sh:/init.sh:ro"]
+    entrypoint: ["sh", "/init.sh"]
+
+  migrate-content:
+    image: migrate/migrate:v4.18.1
+    depends_on:
+      db-content-init: { condition: service_completed_successfully }
+    restart: "no"
+    volumes: ["../services/content/migrations:/migrations:ro"]
+    command: ["-path=/migrations", "-database=postgres://fyber:${POSTGRES_PASSWORD}@postgres:5432/fyberflix_content?sslmode=disable", "up"]
+
+  content:
+    build: { context: .., dockerfile: services/content/Dockerfile, target: api }
+    depends_on:
+      migrate-content: { condition: service_completed_successfully }
+      minio-init: { condition: service_completed_successfully }
+    environment: &content-env
+      DATABASE_URL: postgres://fyber:${POSTGRES_PASSWORD}@postgres:5432/fyberflix_content
+      ADDR: ":8082"
+      AUTH_JWKS_URL: http://auth:8080/.well-known/jwks.json
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: http://localhost:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      MEDIA_BASE_URL: http://localhost:9000/fyber-media
+    restart: unless-stopped
+
+  content-worker:
+    build: { context: .., dockerfile: services/content/Dockerfile, target: worker }
+    depends_on:
+      migrate-content: { condition: service_completed_successfully }
+      minio-init: { condition: service_completed_successfully }
+    environment: *content-env
+    restart: unless-stopped
+
+  gateway:
+    environment:
+      UPSTREAM_CONTENT: http://content:8082
+
+volumes:
+  miniodata:
