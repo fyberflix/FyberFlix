@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/zeaipc/fyberflix/services/auth/internal/riskclient"
+	"github.com/fyberflix/fyberflix/services/auth/internal/riskclient"
 )
 
 // Risk is zikriyon-prism behind risk-service. It is advisory: if it is down, auth keeps working
