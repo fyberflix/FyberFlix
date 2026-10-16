@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zeaipc/fyberflix/services/auth/internal/token"
+	"github.com/fyberflix/fyberflix/services/auth/internal/token"
 )
 
 // Staff tooling: look up a user by FyberFlix number / Fyber Cable name and act on their
