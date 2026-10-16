@@ -1,4 +1,4 @@
-module github.com/zeaipc/fyberflix/services/auth
+module github.com/fyberflix/fyberflix/services/auth
 
 go 1.24
 
