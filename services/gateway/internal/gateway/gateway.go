@@ -24,6 +24,7 @@ type Gateway struct {
 	log  *slog.Logger
 	auth *httputil.ReverseProxy
 	web  *httputil.ReverseProxy
+    cont *httputil.ReverseProxy
 	lim  *limiter
 }
 
@@ -32,6 +33,9 @@ func New(cfg Config, log *slog.Logger) *Gateway {
 	g.auth = g.proxy(cfg.AuthURL)
 	if cfg.WebURL != nil {
 		g.web = g.proxy(cfg.WebURL)
+	}
+	if cfg.ContentURL != nil {
+		g.cont = g.proxy(cfg.ContentURL)
 	}
 	return g
 }
@@ -82,6 +86,9 @@ func (g *Gateway) route(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case p == "/healthz":
 		w.WriteHeader(http.StatusOK)
+	case g.cont != nil && isContentPath(p):
+		g.limitBody(w, r)
+		g.cont.ServeHTTP(w, r)
 	case p == "/.well-known/jwks.json" || strings.HasPrefix(p, "/v1/"):
 		if strings.HasPrefix(p, "/v1/staff/") && !inAny(g.ip(r), g.cfg.StaffNets) {
 			notFound(w) // the staff API does not exist for the public internet
@@ -96,6 +103,12 @@ func (g *Gateway) route(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// isContentPath lists the API paths owned by the content service. It must be checked BEFORE the
+// generic /v1/ -> auth rule (note /v1/me/videos would otherwise go to auth).
+func isContentPath(p string) bool {
+	return p == "/v1/videos" || strings.HasPrefix(p, "/v1/videos/") || p == "/v1/me/videos" ||
+		(strings.HasPrefix(p, "/v1/users/") && strings.HasSuffix(p, "/videos"))
+}
 func (g *Gateway) limitBody(w http.ResponseWriter, r *http.Request) {
 	max := int64(maxJSONBody)
 	if strings.HasSuffix(r.URL.Path, "/face") {
