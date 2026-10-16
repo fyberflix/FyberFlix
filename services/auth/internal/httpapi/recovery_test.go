@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zeaipc/fyberflix/services/auth/internal/token"
+	"github.com/fyberflix/fyberflix/services/auth/internal/token"
 )
 
 type memRec struct {
